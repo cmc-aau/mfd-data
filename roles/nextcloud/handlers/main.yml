@@ -1,0 +1,5 @@
+- name: "Restart nextcloud container"
+  community.docker.docker_container:
+    name: nextcloud
+    state: started
+    restart: true

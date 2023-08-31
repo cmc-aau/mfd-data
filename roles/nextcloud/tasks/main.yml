@@ -1,0 +1,100 @@
+- name: "Create required folders with correct ownership"
+  ansible.builtin.file:
+    path: "{{ item | regex_replace(':.*$', '') }}"
+    state: directory
+    owner: "{{ create_deploy_user.uid }}"
+    group: "{{ create_deploy_user.group }}"
+    mode: "0775"
+    recurse: false
+  loop: "{{ create_dirs }}"
+
+- name: "Deploy PostgreSQL database"
+  community.docker.docker_container:
+    name: postgres_nextcloud
+    recreate: false
+    restart_policy: unless-stopped
+    image: postgres:14.1-alpine3.15
+    env:
+      TZ: "{{ TZ }}"
+      POSTGRES_DB: "{{ nextcloud_db }}"
+      POSTGRES_USER: "{{ nextcloud_db_user }}"
+      POSTGRES_PASSWORD: "{{ nextcloud_db_password }}"
+    networks:
+      - name: "swag_network"
+    volumes:
+      "{{ docker_persistent_vols_db }}"
+
+- name: "Deploy nextcloud"
+  community.docker.docker_container:
+    name: nextcloud
+    recreate: false
+    restart_policy: unless-stopped
+    image: lscr.io/linuxserver/nextcloud:latest
+    env:
+      TZ: "{{ TZ }}"
+      PUID: "{{ create_deploy_user.uid }}"
+      PGID: "{{ create_deploy_user.group }}"
+    networks:
+      - name: "swag_network"
+    volumes:
+      "{{ docker_persistent_vols_nextcloud }}"
+
+- name: "Enable nextcloud reverse-proxy configuration"
+  ansible.builtin.copy:
+    src: "{{ docker_confdir }}/swag/config/nginx/proxy-confs/nextcloud.subfolder.conf.sample"
+    dest: "{{ docker_confdir }}/swag/config/nginx/proxy-confs/nextcloud.subfolder.conf"
+    mode: "0664"
+    owner: "{{ create_deploy_user.uid }}"
+    group: "{{ create_deploy_user.group }}"
+    remote_src: true
+  notify:
+    - "Restart SWAG container"
+
+- name: "Wait for presence of file"
+  ansible.builtin.wait_for:
+    path: "{{ docker_confdir }}/nextcloud/config/www/nextcloud/config/config.php"
+    timeout: 120
+
+- name: "Does the nextcloud config.php file look like a default?"
+  ansible.builtin.lineinfile:
+    path: "{{ docker_confdir }}/nextcloud/config/www/nextcloud/config/config.php"
+    regexp: "^.*{{ swag_URL }}"
+    state: absent
+  check_mode: true
+  changed_when: false
+  register: default_config
+
+- name: "Copy nextcloud config.php"
+  ansible.builtin.template:
+    src: config.php.j2
+    dest: "{{ docker_confdir }}/nextcloud/config/www/nextcloud/config/config.php"
+    mode: "0644"
+    owner: "{{ create_deploy_user.uid }}"
+    group: "{{ create_deploy_user.group }}"
+  when: false #not default_config.found
+  notify:
+    - "Restart nextcloud container"
+
+- name: "Adjust setting in nginx.conf"
+  ansible.builtin.lineinfile:
+    path: "{{ docker_confdir }}/nextcloud/config/nginx/nginx.conf"
+    state: "{{ item.state | default('') }}"
+    regexp: "{{ item.regexp | default('') }}"
+    line: "{{ item.line | default('') }}"
+    insertafter: "{{ item.insertafter | default('') }}"
+  with_items: "{{ nginx_conf_settings }}"
+  notify:
+    - "Restart nextcloud container"
+
+- name: "Set memory limit in php-local.ini"
+  ansible.builtin.lineinfile:
+    path: "{{ docker_confdir }}/nextcloud/config/php/php-local.ini"
+    state: present
+    regexp: '^.*memory_limit'
+    line: 'memory_limit = -1'
+  notify:
+    - "Restart nextcloud container"
+
+- name: "Message"
+  debug:
+    msg: "Use postgres_nextcloud:5432 as database hostname when doing initial setup, not localhost:5432. See https://github.com/linuxserver/docker-nextcloud/issues/211 before setting anything up the first time from web UI."

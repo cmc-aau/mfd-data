@@ -1,0 +1,55 @@
+- name: "Create Docker network: swag_network"
+  community.docker.docker_network:
+    name: swag_network
+    state: present
+    ipam_config:
+      - subnet: "172.16.98.0/24"
+
+- name: "Create required folders with correct ownership"
+  file:
+    path: "{{ item | regex_replace(':.*$', '') }}"
+    state: directory
+    owner: "{{ create_deploy_user.uid }}"
+    group: "{{ create_deploy_user.group }}"
+    mode: "0775"
+    recurse: false
+  loop: "{{ create_dirs }}"
+
+- name: "Deploy SWAG container"
+  community.docker.docker_container:
+    name: swag
+    recreate: false
+    restart_policy: unless-stopped
+    image: ghcr.io/linuxserver/swag:latest
+    published_ports:
+      - 443:443/tcp
+      - 80:80/tcp
+    env:
+      TZ: "{{ TZ }}"
+      PUID: "{{ create_deploy_user.uid }}"
+      PGID: "{{ create_deploy_user.group }}"
+      URL: "{{ swag_URL }}" # if you quote this you will hate yourself for 4 hours
+      VALIDATION: "http"
+      ONLY_SUBDOMAINS: "false"
+    networks:
+      - name: swag_network
+    volumes:
+      "{{ docker_persistent_vols }}"
+    capabilities:
+      - NET_ADMIN
+
+- name: "Wait for presence of file"
+  wait_for:
+    path: "{{ docker_confdir }}/swag/config/nginx/nginx.conf"
+    timeout: 60
+
+- name: "Adjust some settings in nginx.conf"
+  lineinfile:
+    path: "{{ docker_confdir }}/swag/config/nginx/nginx.conf"
+    state: present
+    regexp: '{{ item.regexp }}'
+    line: '{{ item.line }}'
+    insertafter: '{{ item.insertafter }}'
+  with_items: "{{ nginx_conf_settings }}"
+  notify: 
+    - "Restart SWAG container"

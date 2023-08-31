@@ -1,0 +1,22 @@
+docker_persistent_vols:
+  - "{{ docker_confdir }}/swag/config:/config"
+create_dirs:
+  "{{ docker_persistent_vols }}"
+nginx_conf_settings: [
+  {
+    regexp: '^.*keepalive_timeout',
+    line: '    keepalive_timeout 300;',
+    insertafter: 'http {'
+  },
+  {
+    regexp: '^.*proxy_send_timeout',
+    line: '    proxy_send_timeout 0;',
+    insertafter: 'http {'
+  },
+  {
+    regexp: '^.*proxy_read_timeout',
+    line: '    proxy_read_timeout 0;',
+    insertafter: 'http {'
+  },
+  # then uncommented gzip settings manually in the nginx.conf file (to-do)https://www.rosehosting.com/blog/how-to-speed-up-your-nginx-website/
+]

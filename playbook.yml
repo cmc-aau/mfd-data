@@ -1,0 +1,69 @@
+- name: "Deploy nextcloud"
+  become: true
+  hosts: all
+  vars:
+    deploy_user: labrat
+    docker_confdir: "/opt/docker"
+    storage: "/data"
+    pip_package: python3-pip
+    pip_install_packages:
+      - name: docker
+    docker_users:
+      - "{{ deploy_user }}"
+    TZ: "Europe/Copenhagen"
+    swag_URL: mfd-data.duckdns.org
+    sshd_settings:
+      "^#?PasswordAuthentication": "PasswordAuthentication no"
+      "^#?PermitRootLogin": "PermitRootLogin no"
+      "^#?PermitTunnel": "PermitTunnel yes"
+      "^#?Port ": "Port 22"
+      "^#?PermitEmptyPasswords": "PermitEmptyPasswords no"
+      "^#?LoginGraceTime": "LoginGraceTime 1m"
+      "^#?MaxAuthTries": "MaxAuthTries 5"
+      "^#?X11Forwarding": "X11Forwarding no"
+      "^#?ClientAliveInterval": "ClientAliveInterval 300"
+  pre_tasks:
+    #run always! create_deploy_user us used throughout
+    - name: "Create deploy user: {{ deploy_user }}"
+      user:
+        name: "{{ deploy_user }}"
+        create_home: false
+        state: present
+        shell: /usr/sbin/nologin
+      register: create_deploy_user
+      tags: always
+
+    - name: "Update APT cache and do a dist-upgrade"
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+        force_apt_get: true
+        autoremove: true
+        upgrade: dist
+
+    - name: "Password-less sudo for all users"
+      become: true
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        state: present
+        regexp: '^%sudo'
+        line: '%sudo ALL=(ALL) NOPASSWD: ALL'
+        validate: '/usr/sbin/visudo -cf %s'
+
+    - name: "Ensure sshd_config setting"
+      become: true
+      ansible.builtin.lineinfile:
+        dest: "/etc/ssh/sshd_config"
+        regexp: "{{ item }}"
+        line: "{{ sshd_settings[item] }}"
+        state: "present"
+      loop: "{{ sshd_settings | flatten }}"
+      notify:
+        - "Restart SSH daemon"
+  handlers:
+    - import_tasks: handlers/main.yml
+  roles:
+    - geerlingguy.pip
+    - geerlingguy.docker
+    - swag
+    - nextcloud

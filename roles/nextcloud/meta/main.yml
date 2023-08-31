@@ -1,0 +1,8 @@
+---
+dependencies:
+  - role: geerlingguy.pip
+    become: true
+  - role: geerlingguy.docker
+    become: true
+    # vars:
+    #   some_parameter: 3

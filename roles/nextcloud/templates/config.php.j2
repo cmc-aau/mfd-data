@@ -1,0 +1,14 @@
+<?php
+$CONFIG = array (
+  'datadirectory' => '{{ storage }}',
+  'trusted_proxies' =>
+  array (
+    0 => ['swag'],
+  ),
+  'trusted_domains' =>
+  array (
+    0 => '{{ swag_URL }}'
+  ),
+  'overwrite.cli.url' => 'https://{{ swag_URL }}/nextcloud',
+  'installed' => false
+);

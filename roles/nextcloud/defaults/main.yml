@@ -1,0 +1,61 @@
+docker_persistent_vols_nextcloud:
+  - "{{ docker_confdir }}/nextcloud/config/:/config"
+  - "{{ data_dir }}:/data"
+docker_persistent_vols_db:
+  - "{{ docker_confdir }}/nextcloud/postgres/data:/var/lib/postgresql/data"
+create_dirs:
+  "{{ docker_persistent_vols_nextcloud + docker_persistent_vols_db }}"
+nextcloud_db: nextcloud
+nextcloud_db_user: nextcloud
+nextcloud_db_password: "{{ lookup('ansible.builtin.password', 'secrets/' + '/nextcloud_db_password', length=20) }}"
+data_dir: "{{ storage }}/nextcloud"
+nextcloud_subdomain: nextcloud
+nginx_conf_settings: [
+  {
+    state: absent,
+    regexp: '^.*client_max_body_size'
+  },
+  {
+    state: present,
+    regexp: '^.*client_body_buffer_size',
+    line: '        client_body_buffer_size 128k;',
+    insertafter: 'http {'
+  },
+  {
+    state: present,
+    regexp: '^.*large_client_header_buffers',
+    line: '        large_client_header_buffers 4 16k;',
+    insertafter: 'http {'
+  },
+  {
+    state: present,
+    regexp: '^.*send_timeout',
+    line: '        send_timeout 5m;',
+    insertafter: 'http {'
+  },
+  {
+    state: present,
+    regexp: '^.*variables_hash_max_size',
+    line: '        variables_hash_max_size 2048;',
+    insertafter: 'http {'
+  },
+  {
+    state: present,
+    regexp: '^.*proxy_send_timeout',
+    line: '        proxy_send_timeout 0;',
+    insertafter: 'http {'
+  },
+  {
+    state: present,
+    regexp: '^.*proxy_read_timeout',
+    line: '        proxy_read_timeout 0;',
+    insertafter: 'http {'
+  },
+  {
+    state: present,
+    regexp: '^.*keepalive_timeout',
+    line: '        keepalive_timeout 300;',
+    insertafter: 'http {'
+  }
+  #then uncommented gzip settings manually in the nginx.conf file (to-do)https://www.rosehosting.com/blog/how-to-speed-up-your-nginx-website/
+]
